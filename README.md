@@ -52,31 +52,33 @@ for v := range pipeline.Run(ctx) {
 ctx := context.Background()
 var storeFailures int32 = 1
 
-out := sazanami.StageWith(
-	sazanami.StageWith(
-		sazanami.StageWith(
-			sazanami.StageWith(
-				sazanami.From(lines),
-				"parse", parseLogs,
-				sazanami.WithTags("ingest", "json"),
-				sazanami.WithParallel(2),
-			),
-			"filter", filterLevels("warn", "error"),
-			sazanami.WithTags("filter"),
-			sazanami.WithBuffer(4),
-		),
-		"batch", sazanami.Batch[entry](2, time.Second),
-		sazanami.WithTags("batch"),
-		sazanami.WithAttr("size", "2"),
-		sazanami.WithBuffer(1),
-	),
-	"store", storeBatches(&storeFailures),
-	sazanami.WithTags("sink"),
-	sazanami.WithErrorPolicy(sazanami.Retry(2, func(i int) time.Duration {
-		return time.Duration(1<<i) * 200 * time.Millisecond
-	})),
-	sazanami.WithBuffer(1),
-).Run(ctx)
+p := sazanami.From(lines)
+
+p = sazanami.StageWith(p, "parse",  parseLogs,
+    sazanami.WithTags("ingest","json"),
+    sazanami.WithParallel(2),
+)
+
+p = sazanami.StageWith(p, "filter", filterLevels("warn","error"),
+    sazanami.WithTags("filter"),
+    sazanami.WithBuffer(4),
+)
+
+p = sazanami.StageWith(p, "batch",  sazanami.Batch[entry](2, time.Second),
+    sazanami.WithTags("batch"),
+    sazanami.WithAttr("size","2"),
+    sazanami.WithBuffer(1),
+)
+
+p = sazanami.StageWith(p, "store",  storeBatches(&storeFailures),
+    sazanami.WithTags("sink"),
+    sazanami.WithErrorPolicy(sazanami.Retry(2, func(i int) time.Duration {
+        return time.Duration(1<<i) * 200 * time.Millisecond
+    })),
+    sazanami.WithBuffer(1),
+)
+
+out := p.Run(ctx)
 ```
 
 ## Philosophy
