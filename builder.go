@@ -158,8 +158,8 @@ func (b *Builder[I, O]) OnError(p Policy) *Builder[I, O] {
 	return b
 }
 
-// WithMetrics installs hooks that observe pipeline execution.
-func (b *Builder[I, O]) WithMetrics(h Hooks) *Builder[I, O] {
+// WithHooks installs hooks that observe pipeline execution.
+func (b *Builder[I, O]) WithHooks(h Hooks) *Builder[I, O] {
 	if b.state == nil {
 		b.state = &pipelineState{}
 	}
