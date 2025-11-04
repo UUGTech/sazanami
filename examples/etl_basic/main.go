@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/yourorg/sazanami"
+	"github.com/UUGTech/sazanami"
 )
 
 type logRecord struct {

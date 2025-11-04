@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/yourorg/sazanami/internal"
+	"github.com/UUGTech/sazanami/internal"
 )
 
 // Handler represents a stage function that consumes values from in and emits to out.

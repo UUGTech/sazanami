@@ -1,3 +1,3 @@
-module github.com/yourorg/sazanami
+module github.com/UUGTech/sazanami
 
 go 1.22

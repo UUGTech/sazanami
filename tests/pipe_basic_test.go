@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yourorg/sazanami"
-	"github.com/yourorg/sazanami/testkit"
+	"github.com/UUGTech/sazanami"
+	"github.com/UUGTech/sazanami/testkit"
 )
 
 func TestBasicFlow(t *testing.T) {
