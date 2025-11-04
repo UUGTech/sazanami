@@ -20,18 +20,19 @@ go func() {
 
 ctx := context.Background()
 
-pipeline := sazanami.Stage(
-	sazanami.From(src),
-	func(ctx context.Context, in <-chan int, out chan<- int) error {
-		for v := range in {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case out <- v * 2:
-			}
-		}
-		return nil
-	},
+pipeline := sazanami.AddStage(
+    sazanami.From(src),
+    "",
+    func(ctx context.Context, in <-chan int, out chan<- int) error {
+        for v := range in {
+            select {
+            case <-ctx.Done():
+                return ctx.Err()
+            case out <- v * 2:
+            }
+        }
+        return nil
+    },
 )
 
 for v := range pipeline.Run(ctx) {
@@ -40,7 +41,7 @@ for v := range pipeline.Run(ctx) {
 ```
 
 ## Features
-- Fluent builder with typed handlers (`From`, `Stage`, `StageNamed`, `StageWith`, `Run`)
+- Fluent builder with typed handlers (`From`, `AddStage`, `Run`)
 - Concurrency controls: per-stage `Parallel` and `Buffer`
 - Error handling via `Drop`, `Retry`, and `Chain` policies
 - Hooks for stage/item lifecycle metrics
@@ -54,23 +55,23 @@ var storeFailures int32 = 1
 
 p := sazanami.From(lines)
 
-p = sazanami.StageWith(p, "parse",  parseLogs,
+p = sazanami.AddStage(p, "parse",  parseLogs,
     sazanami.WithTags("ingest","json"),
     sazanami.WithParallel(2),
 )
 
-p = sazanami.StageWith(p, "filter", filterLevels("warn","error"),
+p = sazanami.AddStage(p, "filter", filterLevels("warn","error"),
     sazanami.WithTags("filter"),
     sazanami.WithBuffer(4),
 )
 
-p = sazanami.StageWith(p, "batch",  sazanami.Batch[entry](2, time.Second),
+p = sazanami.AddStage(p, "batch",  sazanami.Batch[entry](2, time.Second),
     sazanami.WithTags("batch"),
     sazanami.WithAttr("size","2"),
     sazanami.WithBuffer(1),
 )
 
-p = sazanami.StageWith(p, "store",  storeBatches(&storeFailures),
+p = sazanami.AddStage(p, "store",  storeBatches(&storeFailures),
     sazanami.WithTags("sink"),
     sazanami.WithErrorPolicy(sazanami.Retry(2, func(i int) time.Duration {
         return time.Duration(1<<i) * 200 * time.Millisecond

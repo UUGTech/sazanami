@@ -53,14 +53,14 @@ func main() {
 		},
 	}
 
-	pipeline := sazanami.StageWith(sazanami.From(src), "parse", parseLogs,
+	pipeline := sazanami.AddStage(sazanami.From(src), "parse", parseLogs,
 		sazanami.WithTags("ingest"),
 		sazanami.WithParallel(2),
 	)
-	pipeline = sazanami.StageWith(pipeline, "filter", filterLevels("warn", "error"),
+	pipeline = sazanami.AddStage(pipeline, "filter", filterLevels("warn", "error"),
 		sazanami.WithTags("filter"),
 	)
-	pipeline = sazanami.StageWith(pipeline, "store", storeEntries,
+	pipeline = sazanami.AddStage(pipeline, "store", storeEntries,
 		sazanami.WithTags("sink"),
 	)
 	pipeline = pipeline.WithHooks(hooks)

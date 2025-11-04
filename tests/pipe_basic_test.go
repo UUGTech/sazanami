@@ -16,7 +16,7 @@ func TestBasicFlow(t *testing.T) {
 	defer cancel()
 
 	b := sazanami.From(testkit.SourceOf(1, 2, 3, 4))
-	b = sazanami.Stage(b, func(ctx context.Context, in <-chan int, out chan<- int) error {
+	b = sazanami.AddStage(b, "double", func(ctx context.Context, in <-chan int, out chan<- int) error {
 		for {
 			select {
 			case <-ctx.Done():
@@ -33,7 +33,7 @@ func TestBasicFlow(t *testing.T) {
 			}
 		}
 	})
-	b = sazanami.Stage(b, func(ctx context.Context, in <-chan int, out chan<- int) error {
+	b = sazanami.AddStage(b, "filter", func(ctx context.Context, in <-chan int, out chan<- int) error {
 		for {
 			select {
 			case <-ctx.Done():
@@ -89,7 +89,7 @@ func TestRetryPolicy(t *testing.T) {
 	}
 
 	b := sazanami.From(testkit.SourceOf(7))
-	b = sazanami.Stage(b, handler)
+	b = sazanami.AddStage(b, "fail-once", handler)
 	b = b.OnError(sazanami.Retry(1, sazanami.ConstantBackoff(0)))
 	out := b.Run(ctx)
 
@@ -111,7 +111,7 @@ func TestContextCancel(t *testing.T) {
 	defer baseCancel()
 
 	b := sazanami.From(testkit.SourceOf(1, 2, 3, 4, 5))
-	b = sazanami.Stage(b, func(ctx context.Context, in <-chan int, out chan<- int) error {
+	b = sazanami.AddStage(b, "", func(ctx context.Context, in <-chan int, out chan<- int) error {
 		for {
 			select {
 			case <-ctx.Done():

@@ -48,19 +48,10 @@ func From[I any](src <-chan I) *Builder[I, I] {
 	}
 }
 
-// Stage appends an anonymous stage to the pipeline.
-func Stage[I any, O any, N any](b *Builder[I, O], h Handler[O, N]) *Builder[I, N] {
-	return stageNamed(b, "", h)
-}
-
-// StageNamed appends a named stage to the pipeline.
-func StageNamed[I any, O any, N any](b *Builder[I, O], name string, h Handler[O, N]) *Builder[I, N] {
-	return stageNamed(b, name, h)
-}
-
-// StageWith appends a stage and applies StageOptions to its configuration.
-func StageWith[I any, O any, N any](b *Builder[I, O], name string, h Handler[O, N], opts ...StageOption) *Builder[I, N] {
-	nb := StageNamed(b, name, h)
+// AddStage appends a stage and applies StageOptions to its configuration.
+// If name is empty, an automatic stage identifier is assigned.
+func AddStage[I any, O any, N any](b *Builder[I, O], name string, h Handler[O, N], opts ...StageOption) *Builder[I, N] {
+	nb := stageNamed(b, name, h)
 	if nb.stageIdx >= 0 && len(opts) > 0 {
 		cfg := nb.state.stages[nb.stageIdx]
 		for _, opt := range opts {

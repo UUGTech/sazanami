@@ -46,20 +46,20 @@ func main() {
 
 	var storeFailures int32 = 1
 
-	stageParse := sazanami.StageWith(sazanami.From(src), "parse", parseLogs,
+	events := sazanami.AddStage(sazanami.From(src), "parse", parseLogs,
 		sazanami.WithTags("ingest", "json"),
 		sazanami.WithParallel(2),
 	)
-	stageFilter := sazanami.StageWith(stageParse, "filter", filterLevels("warn", "error"),
+	events = sazanami.AddStage(events, "filter", filterLevels("warn", "error"),
 		sazanami.WithTags("filter"),
 		sazanami.WithBuffer(4),
 	)
-	stageBatch := sazanami.StageWith(stageFilter, "batch", sazanami.Batch[entry](2, time.Second),
+	batchesBuilder := sazanami.AddStage(events, "batch", sazanami.Batch[entry](2, time.Second),
 		sazanami.WithTags("batch"),
 		sazanami.WithAttr("size", "2"),
 		sazanami.WithBuffer(1),
 	)
-	stageStore := sazanami.StageWith(stageBatch, "store", storeBatches(&storeFailures),
+	pipeline := sazanami.AddStage(batchesBuilder, "store", storeBatches(&storeFailures),
 		sazanami.WithTags("sink"),
 		sazanami.WithErrorPolicy(sazanami.Retry(2, func(i int) time.Duration {
 			if i < 0 {
@@ -69,7 +69,7 @@ func main() {
 		})),
 		sazanami.WithBuffer(1),
 	)
-	batches := stageStore.Run(ctx)
+	batches := pipeline.Run(ctx)
 
 	for {
 		select {
