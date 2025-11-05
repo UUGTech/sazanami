@@ -22,7 +22,7 @@ ctx := context.Background()
 
 pipeline := sazanami.AddStage(
     sazanami.From(src),
-    "",
+    "double",
     func(ctx context.Context, in <-chan int, out chan<- int) error {
         for v := range in {
             select {
