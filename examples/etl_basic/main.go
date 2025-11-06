@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -156,20 +157,14 @@ func storeBatches(pending *int32) sazanami.Handler[[]entry, []entry] {
 					}
 					if atomic.CompareAndSwapInt32(pending, 1, 0) {
 						delay := time.Duration(1<<attempt) * 200 * time.Millisecond
-						if delay > 0 {
-							timer := time.NewTimer(delay)
-							select {
-							case <-ctx.Done():
-								if !timer.Stop() {
-									<-timer.C
-								}
-								return ctx.Err()
-							case <-timer.C:
-							}
+						select {
+						case <-ctx.Done():
+							return ctx.Err()
+						case <-time.After(delay):
 						}
 						attempt++
 						fmt.Printf("store retry %d for batch (%d entries)\n", attempt, len(batch))
-						continue
+						return errors.New("temporary store outage")
 					}
 					time.Sleep(50 * time.Millisecond)
 					fmt.Printf("persisted %d entries\n", len(batch))

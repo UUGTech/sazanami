@@ -101,8 +101,8 @@ func TestRetryPolicy(t *testing.T) {
 			t.Fatalf("expected pipeline to close on retry failure")
 		}
 	}
-	if atomic.LoadInt32(&attempts) != 1 {
-		t.Fatalf("expected single attempt, have %d", attempts)
+	if atomic.LoadInt32(&attempts) != 2 {
+		t.Fatalf("expected 2 attempts (initial + retry), have %d", attempts)
 	}
 }
 
@@ -144,6 +144,47 @@ func TestContextCancel(t *testing.T) {
 			}
 		case <-waitCtx.Done():
 			t.Fatalf("pipeline did not close after cancel: %v", waitCtx.Err())
+		}
+	}
+}
+
+func TestDropPolicy(t *testing.T) {
+	ctx, cancel := testkit.Within(500 * time.Millisecond)
+	defer cancel()
+
+	handler := func(ctx context.Context, in <-chan int, out chan<- int) error {
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case v, ok := <-in:
+				if !ok {
+					return nil
+				}
+				if v == 2 {
+					return errors.New("boom")
+				}
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case out <- v:
+				}
+			}
+		}
+	}
+
+	pipeline := sazanami.AddStage(sazanami.From(testkit.SourceOf(1, 2, 3)), "dropper", handler,
+		sazanami.WithErrorPolicy(sazanami.Drop()),
+	)
+
+	got := testkit.Collect(t, ctx, pipeline.Run(ctx))
+	want := []int{1, 3}
+	if len(got) != len(want) {
+		t.Fatalf("unexpected length: got %v want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("unexpected element at %d: got %d want %d", i, got[i], want[i])
 		}
 	}
 }

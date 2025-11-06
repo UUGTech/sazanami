@@ -22,8 +22,8 @@ func main() {
 			{"alpha", 0},
 			{"beta", 50 * time.Millisecond},
 			{"gamma", 50 * time.Millisecond},
-			{"delta", 400 * time.Millisecond}, // triggers time-based flush
-			{"epsilon", 10 * time.Millisecond},
+			{"delta", 10 * time.Millisecond},
+			{"epsilon", 400 * time.Millisecond}, // timer-driven flush will emit before handling this item
 		}
 		for _, item := range inputs {
 			select {

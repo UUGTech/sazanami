@@ -2,6 +2,7 @@ package sazanami
 
 import (
 	"context"
+	"sync"
 	"time"
 )
 
@@ -13,61 +14,67 @@ func Batch[T any](size int, dur time.Duration) Handler[T, []T] {
 	if dur < 0 {
 		dur = 0
 	}
-	return func(ctx context.Context, in <-chan T, out chan<- []T) error {
-		buf := make([]T, 0, size)
-		var timer *time.Timer
-		var timerCh <-chan time.Time
-		if dur > 0 {
-			timer = time.NewTimer(dur)
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
-		}
 
-		startTimer := func() {
-			if timer == nil {
-				return
-			}
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
-			timer.Reset(dur)
-			timerCh = timer.C
-		}
-		stopTimer := func() {
-			if timer == nil {
-				return
-			}
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
-			timerCh = nil
-		}
+	var (
+		mu     sync.Mutex
+		buf    = make([]T, 0, size)
+		timer  *time.Timer
+		ctxRef context.Context
+		outRef chan<- []T
+	)
 
-		flush := func() error {
-			if len(buf) == 0 {
-				return nil
-			}
-			batch := make([]T, len(buf))
-			copy(batch, buf)
-			buf = buf[:0]
-			stopTimer()
+	emit := func(batch []T) error {
+		if len(batch) == 0 || outRef == nil || ctxRef == nil {
+			return nil
+		}
+		select {
+		case <-ctxRef.Done():
+			return ctxRef.Err()
+		case outRef <- batch:
+			return nil
+		}
+	}
+
+	stopTimerLocked := func() {
+		if timer == nil {
+			return
+		}
+		if !timer.Stop() {
 			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case out <- batch:
-				return nil
+			case <-timer.C:
+			default:
 			}
 		}
+		timer = nil
+	}
+
+	flushLocked := func() []T {
+		if len(buf) == 0 {
+			return nil
+		}
+		batch := make([]T, len(buf))
+		copy(batch, buf)
+		buf = buf[:0]
+		stopTimerLocked()
+		return batch
+	}
+
+	scheduleTimerLocked := func() {
+		if dur <= 0 {
+			return
+		}
+		stopTimerLocked()
+		timer = time.AfterFunc(dur, func() {
+			mu.Lock()
+			batch := flushLocked()
+			mu.Unlock()
+			_ = emit(batch)
+		})
+	}
+
+	return func(ctx context.Context, in <-chan T, out chan<- []T) error {
+		ctxRef = ctx
+		outRef = out
 
 		for {
 			select {
@@ -75,21 +82,27 @@ func Batch[T any](size int, dur time.Duration) Handler[T, []T] {
 				return ctx.Err()
 			case v, ok := <-in:
 				if !ok {
-					return flush()
+					mu.Lock()
+					batch := flushLocked()
+					mu.Unlock()
+					return emit(batch)
 				}
+
+				mu.Lock()
 				buf = append(buf, v)
 				if len(buf) == 1 {
-					startTimer()
+					scheduleTimerLocked()
 				}
 				if len(buf) >= size {
-					if err := flush(); err != nil {
+					batch := flushLocked()
+					mu.Unlock()
+					if err := emit(batch); err != nil {
 						return err
 					}
+					continue
 				}
-			case <-timerCh:
-				if err := flush(); err != nil {
-					return err
-				}
+				mu.Unlock()
+				return nil
 			}
 		}
 	}

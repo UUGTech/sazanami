@@ -3,7 +3,6 @@ package sazanami
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/UUGTech/sazanami/internal"
 )
@@ -272,94 +271,4 @@ func cloneAttrs(src map[string]string) map[string]string {
 		dst[k] = v
 	}
 	return dst
-}
-
-func makeStageRunner[In, Out any](cfg *stageConfig, h Handler[In, Out]) stageRunner {
-	return func(ctx context.Context, cancel context.CancelFunc, info StageInfo, hooks Hooks, upstream <-chan any) <-chan any {
-		workerCtx, workerCancel := context.WithCancel(ctx)
-
-		typedIn := internal.FromAny[In](workerCtx, upstream, func(err error) {
-			if hooks.StageError != nil {
-				hooks.StageError(info, err)
-			}
-			workerCancel()
-			cancel()
-		})
-
-		typedOut := make(chan Out, cfg.buffer)
-		outAny := make(chan any, cfg.buffer)
-
-		if hooks.StageStart != nil {
-			hooks.StageStart(info)
-		}
-
-		var wg sync.WaitGroup
-		wg.Add(cfg.parallel)
-		errCh := make(chan error, cfg.parallel)
-
-		for i := 0; i < cfg.parallel; i++ {
-			go func() {
-				defer wg.Done()
-				if err := h(workerCtx, typedIn, typedOut); err != nil {
-					select {
-					case errCh <- err:
-					default:
-					}
-				}
-			}()
-		}
-
-		go func() {
-			wg.Wait()
-			close(errCh)
-			close(typedOut)
-		}()
-
-		go func() {
-			for err := range errCh {
-				if err == nil {
-					continue
-				}
-				if hooks.StageError != nil {
-					hooks.StageError(info, err)
-				}
-				policy := cfg.policy
-				if policy == nil {
-					policy = Drop()
-				}
-				decision := policy.Decide(workerCtx, info, ItemInfo{}, err)
-				switch decision.Action {
-				case DecisionRetry, DecisionFail:
-					workerCancel()
-					cancel()
-				}
-			}
-		}()
-
-		go func() {
-			defer close(outAny)
-			defer func() {
-				if hooks.StageComplete != nil {
-					hooks.StageComplete(info)
-				}
-			}()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case v, ok := <-typedOut:
-					if !ok {
-						return
-					}
-					select {
-					case <-ctx.Done():
-						return
-					case outAny <- v:
-					}
-				}
-			}
-		}()
-
-		return outAny
-	}
 }
