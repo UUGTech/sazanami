@@ -31,7 +31,7 @@ func main() {
 		return "odd"
 	}, "even", "odd")
 
-	evenBuilder := sazanami.AddStage(branches["even"], "double", func(ctx context.Context, in <-chan int, out chan<- int) error {
+	evenValues := sazanami.AddStage(branches["even"], "double", func(ctx context.Context, in <-chan int, out chan<- int) error {
 		for {
 			select {
 			case <-ctx.Done():
@@ -49,7 +49,26 @@ func main() {
 		}
 	})
 
-	oddBuilder := sazanami.AddStage(branches["odd"], "square", func(ctx context.Context, in <-chan int, out chan<- int) error {
+	evenFormatted := sazanami.AddStage(evenValues, "format-even", func(ctx context.Context, in <-chan int, out chan<- string) error {
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case v, ok := <-in:
+				if !ok {
+					return nil
+				}
+				msg := fmt.Sprintf("even branch -> %d", v)
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case out <- msg:
+				}
+			}
+		}
+	})
+
+	oddValues := sazanami.AddStage(branches["odd"], "square", func(ctx context.Context, in <-chan int, out chan<- int) error {
 		for {
 			select {
 			case <-ctx.Done():
@@ -67,23 +86,28 @@ func main() {
 		}
 	})
 
-	evenOut := evenBuilder.Run(ctx)
-	oddOut := oddBuilder.Run(ctx)
-
-	for evenOut != nil || oddOut != nil {
-		select {
-		case v, ok := <-evenOut:
-			if !ok {
-				evenOut = nil
-				continue
+	oddFormatted := sazanami.AddStage(oddValues, "format-odd", func(ctx context.Context, in <-chan int, out chan<- string) error {
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case v, ok := <-in:
+				if !ok {
+					return nil
+				}
+				msg := fmt.Sprintf("odd branch -> %d", v)
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case out <- msg:
+				}
 			}
-			fmt.Printf("even branch -> %d\n", v)
-		case v, ok := <-oddOut:
-			if !ok {
-				oddOut = nil
-				continue
-			}
-			fmt.Printf("odd branch -> %d\n", v)
 		}
+	})
+
+	merged := sazanami.FanIn(ctx, evenFormatted.Run(ctx), oddFormatted.Run(ctx))
+
+	for msg := range merged {
+		fmt.Println(msg)
 	}
 }
