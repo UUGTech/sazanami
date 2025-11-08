@@ -1,0 +1,19 @@
+project_name: sazanami
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - skip: true
+
+release:
+  draft: true
+  prerelease: false
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^doc:'
+      - '^docs:'
