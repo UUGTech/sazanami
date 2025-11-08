@@ -1,5 +1,9 @@
 # Sazanami 🌊
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/UUGTech/sazanami.svg)](https://pkg.go.dev/github.com/UUGTech/sazanami)
+[![Go Report Card](https://goreportcard.com/badge/github.com/UUGTech/sazanami)](https://goreportcard.com/report/github.com/UUGTech/sazanami)
+![CI](https://github.com/UUGTech/sazanami/actions/workflows/ci.yml/badge.svg)
+
 ## Overview
 Sazanami is a minimal pipeline library for Go. It lets you compose concurrent stages with type-safe handlers, buffering, and error policies—ideal for ETL flows, streaming jobs, or any workload that benefits from backpressure-aware pipelines. The design favors explicit, readable code: generics for safety, zero external dependencies, and a fluent builder that feels at home in Go.
 
@@ -43,9 +47,10 @@ for v := range pipeline.Run(ctx) {
 ## Features
 - Fluent builder with typed handlers (`From`, `AddStage`, `Run`)
 - Concurrency controls: per-stage `Parallel` and `Buffer`
-- Error handling via `Drop`, `Retry`, and `Chain` policies
-- Hooks for stage/item lifecycle metrics
+- Error handling via `Drop`, `Retry`, `Collect/Drain` (channel or handler variants)
+- Hooks for stage/item lifecycle metrics; `testkit.StageRecorder` for assertions
 - `Batch(size, duration)` helper and lightweight `testkit`
+- Fan-out / Fan-in helpers (`FanOutBy`, `FanIn`)
 - Zero external dependencies; standard library only
 
 ## Example: ETL Pipeline
@@ -74,8 +79,12 @@ p = sazanami.AddStage(p, "batch",  sazanami.Batch[entry](2, time.Second),
 p = sazanami.AddStage(p, "store",  storeBatches(&storeFailures),
     sazanami.WithTags("sink"),
     sazanami.WithErrorPolicy(sazanami.Retry(2, func(i int) time.Duration {
+        if i < 0 {
+            i = 0
+        }
         return time.Duration(1<<i) * 200 * time.Millisecond
     })),
+    sazanami.WithTimeout(500*time.Millisecond),
     sazanami.WithBuffer(1),
 )
 
