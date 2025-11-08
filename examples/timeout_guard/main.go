@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
 	src := make(chan int)
@@ -24,35 +24,21 @@ func main() {
 		}
 	}()
 
-	pipeline := sazanami.AddStage(sazanami.From(src), "slow-worker", slowWorker,
-		sazanami.WithTimeout(80*time.Millisecond),
-		sazanami.WithErrorPolicy(sazanami.Drop()),
+	pipeline := sazanami.AddStage(sazanami.From(src), "slow-worker", sazanami.Map(func(ctx context.Context, v int) (int, error) {
+		fmt.Printf("processing %d...\n", v)
+		time.Sleep(300 * time.Millisecond * time.Duration(v))
+		return v, nil
+	}),
+		sazanami.WithTimeout(1000*time.Millisecond),
+		sazanami.WithErrorPolicy(sazanami.Chain(
+			sazanami.CollectFailuresFuncAs(func(v int) {
+				fmt.Printf("dropped item %d due to timeout\n", v)
+			}),
+			sazanami.Drop(),
+		)),
 	)
 
 	for v := range pipeline.Run(ctx) {
 		fmt.Printf("completed item %d\n", v)
-	}
-
-	fmt.Println("pipeline finished (items exceeding the timeout were dropped)")
-}
-
-func slowWorker(ctx context.Context, in <-chan int, out chan<- int) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case v, ok := <-in:
-			if !ok {
-				return nil
-			}
-			fmt.Printf("processing %d...\n", v)
-			time.Sleep(120 * time.Millisecond)
-			select {
-			case <-ctx.Done():
-				fmt.Printf("timeout while handling %d (%v)\n", v, ctx.Err())
-				return ctx.Err()
-			case out <- v:
-			}
-		}
 	}
 }

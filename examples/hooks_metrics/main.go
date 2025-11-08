@@ -53,14 +53,25 @@ func main() {
 		},
 	}
 
+	allowedLevels := map[string]struct{}{
+		"warn":  {},
+		"error": {},
+	}
+
 	pipeline := sazanami.AddStage(sazanami.From(src), "parse", parseLogs,
 		sazanami.WithTags("ingest"),
 		sazanami.WithParallel(2),
 	)
-	pipeline = sazanami.AddStage(pipeline, "filter", filterLevels("warn", "error"),
+	pipeline = sazanami.AddStage(pipeline, "filter", sazanami.Filter(func(_ context.Context, e entry) (bool, error) {
+		_, ok := allowedLevels[e.Level]
+		return ok, nil
+	}),
 		sazanami.WithTags("filter"),
 	)
-	pipeline = sazanami.AddStage(pipeline, "store", storeEntries,
+	pipeline = sazanami.AddStage(pipeline, "store", sazanami.ForEach(func(_ context.Context, e entry) error {
+		fmt.Printf("store: [%s] %s\n", e.Level, e.Message)
+		return nil
+	}),
 		sazanami.WithTags("sink"),
 	)
 	pipeline = pipeline.WithHooks(hooks)
@@ -84,52 +95,6 @@ func parseLogs(ctx context.Context, in <-chan string, out chan<- entry) error {
 				return err
 			}
 			e := entry{Level: raw.Level, Message: raw.Message, When: time.Now()}
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case out <- e:
-			}
-		}
-	}
-}
-
-func filterLevels(levels ...string) sazanami.Handler[entry, entry] {
-	allowed := make(map[string]struct{}, len(levels))
-	for _, lvl := range levels {
-		allowed[lvl] = struct{}{}
-	}
-	return func(ctx context.Context, in <-chan entry, out chan<- entry) error {
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case e, ok := <-in:
-				if !ok {
-					return nil
-				}
-				if _, ok := allowed[e.Level]; !ok {
-					continue
-				}
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case out <- e:
-				}
-			}
-		}
-	}
-}
-
-func storeEntries(ctx context.Context, in <-chan entry, out chan<- entry) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case e, ok := <-in:
-			if !ok {
-				return nil
-			}
-			fmt.Printf("store: [%s] %s\n", e.Level, e.Message)
 			select {
 			case <-ctx.Done():
 				return ctx.Err()

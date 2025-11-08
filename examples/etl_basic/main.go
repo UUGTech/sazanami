@@ -46,12 +46,19 @@ func main() {
 	}()
 
 	var storeFailures int32 = 1
+	allowedLevels := map[string]struct{}{
+		"warn":  {},
+		"error": {},
+	}
 
 	events := sazanami.AddStage(sazanami.From(src), "parse", parseLogs,
 		sazanami.WithTags("ingest", "json"),
 		sazanami.WithParallel(2),
 	)
-	events = sazanami.AddStage(events, "filter", filterLevels("warn", "error"),
+	events = sazanami.AddStage(events, "filter", sazanami.Filter(func(_ context.Context, e entry) (bool, error) {
+		_, ok := allowedLevels[e.Level]
+		return ok, nil
+	}),
 		sazanami.WithTags("filter"),
 		sazanami.WithBuffer(4),
 	)
@@ -109,33 +116,6 @@ func parseLogs(ctx context.Context, in <-chan string, out chan<- entry) error {
 			case <-ctx.Done():
 				return ctx.Err()
 			case out <- evt:
-			}
-		}
-	}
-}
-
-func filterLevels(levels ...string) sazanami.Handler[entry, entry] {
-	allowed := make(map[string]struct{}, len(levels))
-	for _, lvl := range levels {
-		allowed[lvl] = struct{}{}
-	}
-	return func(ctx context.Context, in <-chan entry, out chan<- entry) error {
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case e, ok := <-in:
-				if !ok {
-					return nil
-				}
-				if _, ok := allowed[e.Level]; !ok {
-					continue
-				}
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case out <- e:
-				}
 			}
 		}
 	}
