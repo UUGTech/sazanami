@@ -74,10 +74,58 @@ func CollectFailures(ch chan<- Failure) Policy {
 	})
 }
 
+// CollectFailuresFunc invokes the provided handler for each failure while continuing.
+func CollectFailuresFunc(fn func(Failure)) Policy {
+	if fn == nil {
+		return Drop()
+	}
+	return policyFunc(func(_ context.Context, failure Failure) Result {
+		fn(failure)
+		return Result{action: actionPass}
+	})
+}
+
+// CollectFailuresFuncAs invokes the handler when the failure item matches the desired type.
+func CollectFailuresFuncAs[T any](fn func(T)) Policy {
+	if fn == nil {
+		return Drop()
+	}
+	return policyFunc(func(_ context.Context, failure Failure) Result {
+		if v, ok := failure.Item.(T); ok {
+			fn(v)
+		}
+		return Result{action: actionPass}
+	})
+}
+
 // DrainFailures routes the failing item and all remaining input to the channel and stops the stage.
 func DrainFailures(ch chan<- Failure) Policy {
 	return policyFunc(func(context.Context, Failure) Result {
 		return Result{action: actionDrain, target: ch}
+	})
+}
+
+// DrainFailuresFunc invokes the handler with the failing item and drains the remaining input.
+func DrainFailuresFunc(fn func(Failure)) Policy {
+	if fn == nil {
+		return Drop()
+	}
+	return policyFunc(func(_ context.Context, failure Failure) Result {
+		fn(failure)
+		return Result{action: actionDrain}
+	})
+}
+
+// DrainFailuresFuncAs invokes the handler when the failure item matches the desired type and drains the remaining input.
+func DrainFailuresFuncAs[T any](fn func(T)) Policy {
+	if fn == nil {
+		return Drop()
+	}
+	return policyFunc(func(_ context.Context, failure Failure) Result {
+		if v, ok := failure.Item.(T); ok {
+			fn(v)
+		}
+		return Result{action: actionDrain}
 	})
 }
 

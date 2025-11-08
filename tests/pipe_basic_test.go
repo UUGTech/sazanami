@@ -188,3 +188,92 @@ func TestDropPolicy(t *testing.T) {
 		}
 	}
 }
+
+func TestCollectFailuresFunc(t *testing.T) {
+	ctx, cancel := testkit.Within(500 * time.Millisecond)
+	defer cancel()
+
+	var collected []int
+	handler := func(ctx context.Context, in <-chan int, out chan<- int) error {
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case v, ok := <-in:
+				if !ok {
+					return nil
+				}
+				if v%2 == 0 {
+					return errors.New("even drop")
+				}
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case out <- v:
+				}
+			}
+		}
+	}
+
+	pipeline := sazanami.AddStage(sazanami.From(testkit.SourceOf(1, 2, 3, 4, 5)), "collect", handler,
+		sazanami.WithErrorPolicy(
+			sazanami.Chain(
+				sazanami.CollectFailuresFuncAs(func(val int) {
+					collected = append(collected, val)
+				}),
+				sazanami.Drop(),
+			),
+		),
+	)
+
+	got := testkit.Collect(t, ctx, pipeline.Run(ctx))
+	if len(got) != 3 {
+		t.Fatalf("unexpected output: %v", got)
+	}
+	if len(collected) != 2 || collected[0] != 2 || collected[1] != 4 {
+		t.Fatalf("unexpected collected failures: %v", collected)
+	}
+}
+
+func TestDrainFailuresFunc(t *testing.T) {
+	ctx, cancel := testkit.Within(500 * time.Millisecond)
+	defer cancel()
+
+	var drained []int
+	handler := func(ctx context.Context, in <-chan int, out chan<- int) error {
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case v, ok := <-in:
+				if !ok {
+					return nil
+				}
+				if v == 3 {
+					return errors.New("drain rest")
+				}
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case out <- v:
+				}
+			}
+		}
+	}
+
+	pipeline := sazanami.AddStage(sazanami.From(testkit.SourceOf(1, 2, 3, 4, 5)), "drain", handler,
+		sazanami.WithErrorPolicy(
+			sazanami.DrainFailuresFuncAs(func(v int) {
+				drained = append(drained, v)
+			}),
+		),
+	)
+
+	got := testkit.Collect(t, ctx, pipeline.Run(ctx))
+	if len(got) != 2 {
+		t.Fatalf("unexpected output: %v", got)
+	}
+	if len(drained) == 0 || drained[0] != 3 {
+		t.Fatalf("expected drained items, got %v", drained)
+	}
+}
