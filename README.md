@@ -5,7 +5,7 @@
 ![CI](https://github.com/UUGTech/sazanami/actions/workflows/ci.yml/badge.svg)
 
 ## Overview
-Sazanami is a minimal pipeline library for Go. It lets you compose concurrent stages with type-safe handlers, buffering, and error policies—ideal for ETL flows, streaming jobs, or any workload that benefits from backpressure-aware pipelines. The design favors explicit, readable code: generics for safety, zero external dependencies, and a fluent builder that feels at home in Go.
+Sazanami is a minimal pipeline library for Go. It lets you compose concurrent stages with type-safe handlers, buffering, and error policies-ideal for ETL flows, streaming jobs, or any workload that benefits from backpressure-aware pipelines. The design favors explicit, readable code: generics for safety, zero external dependencies, and a fluent builder that feels at home in Go.
 
 ## Installation
 ```bash
@@ -24,23 +24,47 @@ go func() {
 
 ctx := context.Background()
 
-pipeline := sazanami.AddStage(
-    sazanami.From(src),
-    "double",
-    func(ctx context.Context, in <-chan int, out chan<- int) error {
-        for v := range in {
-            select {
-            case <-ctx.Done():
-                return ctx.Err()
-            case out <- v * 2:
-            }
-        }
-        return nil
-    },
-)
+p := sazanami.From(src)
+p = sazanami.AddStage(p, "double", func(ctx context.Context, in <-chan int, out chan<- int) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case v, ok := <-in:
+			if !ok {
+				return nil
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case out <- v * 2:
+			}
+		}
+	}
+})
+p = sazanami.AddStage(p, "filter-multiples", func(ctx context.Context, in <-chan int, out chan<- int) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case v, ok := <-in:
+			if !ok {
+				return nil
+			}
+			if v%4 != 0 {
+				continue
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case out <- v:
+			}
+		}
+	}
+})
 
-for v := range pipeline.Run(ctx) {
-	fmt.Println(v) // 2, 4, 6, 8
+for v := range p.Run(ctx) {
+	fmt.Println(v) // 4, 8
 }
 ```
 
