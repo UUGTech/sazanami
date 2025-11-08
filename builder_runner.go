@@ -42,7 +42,7 @@ func makeStageRunner[In, Out any](cfg *stageConfig, h Handler[In, Out]) stageRun
 			workerIndex := i
 			go func() {
 				defer wg.Done()
-				runWorker(workerCtx, cancel, workerCancel, info, hooks, typedIn, typedOut, h, policy, &flushOnce, &sequence, workerIndex)
+				runWorker(workerCtx, cancel, workerCancel, info, hooks, typedIn, typedOut, h, policy, &flushOnce, &sequence, workerIndex, cfg.timeout)
 			}()
 		}
 
@@ -79,7 +79,7 @@ func makeStageRunner[In, Out any](cfg *stageConfig, h Handler[In, Out]) stageRun
 	}
 }
 
-func runWorker[In, Out any](ctx context.Context, cancel context.CancelFunc, workerCancel context.CancelFunc, info StageInfo, hooks Hooks, typedIn <-chan In, typedOut chan<- Out, h Handler[In, Out], policy Policy, flushOnce *sync.Once, sequence *uint64, worker int) {
+func runWorker[In, Out any](ctx context.Context, cancel context.CancelFunc, workerCancel context.CancelFunc, info StageInfo, hooks Hooks, typedIn <-chan In, typedOut chan<- Out, h Handler[In, Out], policy Policy, flushOnce *sync.Once, sequence *uint64, worker int, timeout time.Duration) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -87,7 +87,7 @@ func runWorker[In, Out any](ctx context.Context, cancel context.CancelFunc, work
 		case item, ok := <-typedIn:
 			if !ok {
 				flushOnce.Do(func() {
-					if err := invokeHandler(ctx, h, typedOut, nil); err != nil {
+					if err := invokeHandler(ctx, timeout, h, typedOut, nil); err != nil {
 						if hooks.StageError != nil {
 							hooks.StageError(info, err)
 						}
@@ -109,7 +109,7 @@ func runWorker[In, Out any](ctx context.Context, cancel context.CancelFunc, work
 					hooks.ItemStart(info, itemInfo)
 				}
 
-				err := invokeHandler(ctx, h, typedOut, &current)
+				err := invokeHandler(ctx, timeout, h, typedOut, &current)
 				if err == nil {
 					if hooks.ItemComplete != nil {
 						hooks.ItemComplete(info, itemInfo)
@@ -177,7 +177,7 @@ func runWorker[In, Out any](ctx context.Context, cancel context.CancelFunc, work
 					}
 					drainRemaining(ctx, typedIn, result.target, info)
 					flushOnce.Do(func() {
-						if err := invokeHandler(ctx, h, typedOut, nil); err != nil {
+						if err := invokeHandler(ctx, timeout, h, typedOut, nil); err != nil {
 							if hooks.StageError != nil {
 								hooks.StageError(info, err)
 							}
@@ -201,13 +201,19 @@ func runWorker[In, Out any](ctx context.Context, cancel context.CancelFunc, work
 	}
 }
 
-func invokeHandler[In, Out any](ctx context.Context, h Handler[In, Out], out chan<- Out, value *In) error {
+func invokeHandler[In, Out any](ctx context.Context, timeout time.Duration, h Handler[In, Out], out chan<- Out, value *In) error {
+	callCtx := ctx
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		callCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
 	itemIn := make(chan In, 1)
 	if value != nil {
 		itemIn <- *value
 	}
 	close(itemIn)
-	return h(ctx, itemIn, out)
+	return h(callCtx, itemIn, out)
 }
 
 func drainRemaining[In any](ctx context.Context, typedIn <-chan In, target chan<- Failure, stage StageInfo) {

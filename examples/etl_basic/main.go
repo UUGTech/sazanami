@@ -68,6 +68,7 @@ func main() {
 			}
 			return time.Duration(1<<i) * 200 * time.Millisecond
 		})),
+		sazanami.WithTimeout(500*time.Millisecond),
 		sazanami.WithBuffer(1),
 	)
 	batches := pipeline.Run(ctx)
@@ -79,7 +80,7 @@ func main() {
 			return
 		case batch, ok := <-batches:
 			if !ok {
-				fmt.Println("pipeline drained")
+				fmt.Println("pipeline finished")
 				return
 			}
 			fmt.Printf("stored batch (%d entries):\n", len(batch))

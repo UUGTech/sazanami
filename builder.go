@@ -3,6 +3,7 @@ package sazanami
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/UUGTech/sazanami/internal"
 )
@@ -30,6 +31,7 @@ type stageConfig struct {
 	parallel int
 	buffer   int
 	policy   Policy
+	timeout  time.Duration
 	runner   stageRunner
 }
 
@@ -208,6 +210,16 @@ func WithErrorPolicy(p Policy) StageOption {
 	}
 	return func(c *stageConfig) {
 		c.policy = p
+	}
+}
+
+// WithTimeout configures a per-item processing deadline for the stage.
+func WithTimeout(d time.Duration) StageOption {
+	if d < 0 {
+		d = 0
+	}
+	return func(c *stageConfig) {
+		c.timeout = d
 	}
 }
 
