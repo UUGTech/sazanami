@@ -277,3 +277,38 @@ func TestDrainFailuresFunc(t *testing.T) {
 		t.Fatalf("expected drained items, got %v", drained)
 	}
 }
+
+func TestStageRecorder(t *testing.T) {
+	ctx, cancel := testkit.Within(500 * time.Millisecond)
+	defer cancel()
+
+	recorder := testkit.NewStageRecorder()
+
+	pipeline := sazanami.AddStage(sazanami.From(testkit.SourceOf(1, 2)), "double",
+		func(ctx context.Context, in <-chan int, out chan<- int) error {
+			for {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case v, ok := <-in:
+					if !ok {
+						return nil
+					}
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case out <- v * 2:
+					}
+				}
+			}
+		},
+	)
+	pipeline = pipeline.WithHooks(recorder.Hooks())
+
+	_ = testkit.Collect(t, ctx, pipeline.Run(ctx))
+
+	snapshot := recorder.Snapshot()
+	if len(snapshot) == 0 || snapshot[0].Name != "double" {
+		t.Fatalf("expected recorded stage, got %v", snapshot)
+	}
+}
