@@ -230,7 +230,7 @@ func (b *Builder[I, O]) Run(ctx context.Context) <-chan O {
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 
-	var current <-chan any = internal.ToAny(runCtx, b.source)
+	current := internal.ToAny(runCtx, b.source)
 	for idx, cfg := range b.state.stages {
 		info := StageInfo{
 			Index:      idx,

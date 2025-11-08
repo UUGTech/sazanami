@@ -152,29 +152,26 @@ func storeBatches(pending *int32) sazanami.Handler[[]entry, []entry] {
 					return nil
 				}
 				attempt := 0
-				for {
-					if err := ctx.Err(); err != nil {
-						return err
-					}
-					if atomic.CompareAndSwapInt32(pending, 1, 0) {
-						delay := time.Duration(1<<attempt) * 200 * time.Millisecond
-						select {
-						case <-ctx.Done():
-							return ctx.Err()
-						case <-time.After(delay):
-						}
-						attempt++
-						fmt.Printf("store retry %d for batch (%d entries)\n", attempt, len(batch))
-						return errors.New("temporary store outage")
-					}
-					time.Sleep(50 * time.Millisecond)
-					fmt.Printf("persisted %d entries\n", len(batch))
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				if atomic.CompareAndSwapInt32(pending, 1, 0) {
+					delay := time.Duration(1<<attempt) * 200 * time.Millisecond
 					select {
 					case <-ctx.Done():
 						return ctx.Err()
-					case out <- batch:
+					case <-time.After(delay):
 					}
-					break
+					attempt++
+					fmt.Printf("store retry %d for batch (%d entries)\n", attempt, len(batch))
+					return errors.New("temporary store outage")
+				}
+				time.Sleep(50 * time.Millisecond)
+				fmt.Printf("persisted %d entries\n", len(batch))
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case out <- batch:
 				}
 			}
 		}
