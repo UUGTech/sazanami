@@ -121,4 +121,4 @@ Keep the surface area small, the behavior predictable, and the code idiomatic. S
 ## License
 MIT
 
-PRs welcome.
+PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
