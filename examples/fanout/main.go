@@ -31,79 +31,29 @@ func main() {
 		return "odd"
 	}, "even", "odd")
 
-	evenValues := sazanami.AddStage(branches["even"], "double", func(ctx context.Context, in <-chan int, out chan<- int) error {
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case v, ok := <-in:
-				if !ok {
-					return nil
-				}
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case out <- v * 2:
-				}
-			}
-		}
-	})
+	evenValues := sazanami.AddStage(branches["even"], "double",
+		sazanami.Map(func(_ context.Context, v int) (int, error) {
+			return v * 2, nil
+		}),
+	)
 
-	evenFormatted := sazanami.AddStage(evenValues, "format-even", func(ctx context.Context, in <-chan int, out chan<- string) error {
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case v, ok := <-in:
-				if !ok {
-					return nil
-				}
-				msg := fmt.Sprintf("even branch -> %d", v)
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case out <- msg:
-				}
-			}
-		}
-	})
+	evenFormatted := sazanami.AddStage(evenValues, "format-even",
+		sazanami.Map(func(_ context.Context, v int) (string, error) {
+			return fmt.Sprintf("even branch -> %d", v), nil
+		}),
+	)
 
-	oddValues := sazanami.AddStage(branches["odd"], "square", func(ctx context.Context, in <-chan int, out chan<- int) error {
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case v, ok := <-in:
-				if !ok {
-					return nil
-				}
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case out <- v * v:
-				}
-			}
-		}
-	})
+	oddValues := sazanami.AddStage(branches["odd"], "square",
+		sazanami.Map(func(_ context.Context, v int) (int, error) {
+			return v * v, nil
+		}),
+	)
 
-	oddFormatted := sazanami.AddStage(oddValues, "format-odd", func(ctx context.Context, in <-chan int, out chan<- string) error {
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case v, ok := <-in:
-				if !ok {
-					return nil
-				}
-				msg := fmt.Sprintf("odd branch -> %d", v)
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case out <- msg:
-				}
-			}
-		}
-	})
+	oddFormatted := sazanami.AddStage(oddValues, "format-odd",
+		sazanami.Map(func(_ context.Context, v int) (string, error) {
+			return fmt.Sprintf("odd branch -> %d", v), nil
+		}),
+	)
 
 	merged := sazanami.FanIn(ctx, evenFormatted.Run(ctx), oddFormatted.Run(ctx))
 

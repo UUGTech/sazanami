@@ -44,30 +44,14 @@ func main() {
 		sazanami.WithAttr("size", "3"),
 		sazanami.WithBuffer(1),
 	)
-	pipeline = sazanami.AddStage(pipeline, "sink", printBatch,
+	pipeline = sazanami.AddStage(pipeline, "sink", sazanami.ForEach(func(_ context.Context, batch []string) error {
+		fmt.Printf("batch ready: %v\n", batch)
+		return nil
+	}),
 		sazanami.WithTags("sink"),
 	)
 
 	for batch := range pipeline.Run(ctx) {
 		fmt.Printf("drained batch with %d items\n", len(batch))
-	}
-}
-
-func printBatch(ctx context.Context, in <-chan []string, out chan<- []string) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case batch, ok := <-in:
-			if !ok {
-				return nil
-			}
-			fmt.Printf("batch ready: %v\n", batch)
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case out <- batch:
-			}
-		}
 	}
 }

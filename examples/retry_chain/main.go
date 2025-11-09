@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -26,28 +27,24 @@ func main() {
 		}
 	}()
 
-	unstable := &flakyStore{failures: map[int]int{
-		2: 3,
-		4: 1,
-		5: 3,
-	}}
+	unstable := &flakyStore{
+		failures: map[int]int{
+			2: 3,
+			4: 1,
+			5: 3,
+		},
+	}
 
-	failChan := make(chan sazanami.Failure)
-
-	pipeline := sazanami.AddStage(sazanami.From(src), "unstable-store", unstable.handle,
+	pipeline := sazanami.AddStage(sazanami.From(src), "unstable-store", unstable.handler(),
 		sazanami.WithTags("sink"),
 		sazanami.WithParallel(4),
 		sazanami.WithErrorPolicy(sazanami.Chain(
 			sazanami.Retry(2, sazanami.ConstantBackoff(50*time.Millisecond)),
-			sazanami.CollectFailures(failChan),
+			sazanami.CollectFailuresFunc(func(f sazanami.Failure) {
+				fmt.Printf("failed to store %v: %v\n", f.Item, f.Err)
+			}),
 		)),
 	)
-
-	go func() {
-		for f := range failChan {
-			fmt.Printf("final failure for %d: %v\n", f.Item, f.Err)
-		}
-	}()
 
 	for v := range pipeline.Run(ctx) {
 		fmt.Printf("stored: %d\n", v)
@@ -55,31 +52,22 @@ func main() {
 }
 
 type flakyStore struct {
+	mu       sync.Mutex
 	failures map[int]int
 	attempts atomic.Int32
 }
 
-func (f *flakyStore) handle(ctx context.Context, in <-chan int, out chan<- int) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case v, ok := <-in:
-			if !ok {
-				return nil
-			}
-			if f.failures[v] > 0 {
-				f.failures[v]--
-				f.attempts.Add(1)
-				fmt.Printf("attempt %d failed for %d\n", f.attempts.Load(), v)
-				return errors.New("demonstration failure")
-			}
-			fmt.Printf("persisted %d\n", v)
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case out <- v:
-			}
+func (f *flakyStore) handler() sazanami.Handler[int, int] {
+	return sazanami.Map(func(_ context.Context, v int) (int, error) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if f.failures[v] > 0 {
+			f.failures[v]--
+			f.attempts.Add(1)
+			fmt.Printf("attempt %d failed for %d\n", f.attempts.Load(), v)
+			return 0, errors.New("demonstration failure")
 		}
-	}
+		fmt.Printf("persisted %d\n", v)
+		return v, nil
+	})
 }

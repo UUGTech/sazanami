@@ -27,27 +27,15 @@ func main() {
 	}()
 
 	var dropped atomic.Int32
+	dropped.Store(0)
 
-	pipeline := sazanami.AddStage(sazanami.From(src), "filter-odd", func(ctx context.Context, in <-chan int, out chan<- int) error {
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case v, ok := <-in:
-				if !ok {
-					return nil
-				}
-				if v%2 == 0 {
-					return errors.New("even number")
-				}
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case out <- v:
-				}
+	pipeline := sazanami.AddStage(sazanami.From(src), "filter-odd",
+		sazanami.Map(func(_ context.Context, v int) (int, error) {
+			if v%2 == 0 {
+				return 0, errors.New("even number")
 			}
-		}
-	},
+			return v, nil
+		}),
 		sazanami.WithErrorPolicy(
 			sazanami.Chain(
 				sazanami.CollectFailuresFuncAs(func(val int) {
