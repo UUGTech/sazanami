@@ -14,7 +14,7 @@ go get github.com/UUGTech/sazanami
 
 ## Quickstart
 ```go
-src := make(chan int)
+src := make(chan int, 4)
 go func() {
 	defer close(src)
 	for _, v := range []int{1, 2, 3, 4} {
@@ -25,43 +25,16 @@ go func() {
 ctx := context.Background()
 
 p := sazanami.From(src)
-p = sazanami.AddStage(p, "double", func(ctx context.Context, in <-chan int, out chan<- int) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case v, ok := <-in:
-			if !ok {
-				return nil
-			}
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case out <- v * 2:
-			}
-		}
-	}
-})
-p = sazanami.AddStage(p, "filter-multiples", func(ctx context.Context, in <-chan int, out chan<- int) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case v, ok := <-in:
-			if !ok {
-				return nil
-			}
-			if v%4 != 0 {
-				continue
-			}
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case out <- v:
-			}
-		}
-	}
-})
+p = sazanami.AddStage(p, "double",
+	sazanami.Map(func(_ context.Context, v int) (int, error) {
+		return v * 2, nil
+	}),
+)
+p = sazanami.AddStage(p, "filter-multiples",
+	sazanami.Filter(func(_ context.Context, v int) (bool, error) {
+		return v%4 == 0, nil
+	}),
+)
 
 for v := range p.Run(ctx) {
 	fmt.Println(v) // 4, 8
@@ -73,9 +46,20 @@ for v := range p.Run(ctx) {
 - Concurrency controls: per-stage `Parallel` and `Buffer`
 - Error handling via `Drop`, `Retry`, `Collect/Drain` (channel or handler variants)
 - Hooks for stage/item lifecycle metrics; `testkit.StageRecorder` for assertions
-- `Batch(size, duration)` helper and lightweight `testkit`
+- Built-in stage helpers: `Map`, `Filter`, `Reduce`, `ForEach`, `Batch`, plus lightweight `testkit`
 - Fan-out / Fan-in helpers (`FanOutBy`, `FanIn`)
 - Zero external dependencies; standard library only
+
+## Built-in Handlers
+Sazanami ships with adapters for the most common stage shapes so you rarely touch raw channels:
+
+- `Map(func(ctx, in) (out, error))` – transform each item (returning an error drops into the policy path)
+- `Filter(func(ctx, in) (keep bool, error))` – keep a subset without manual `continue`
+- `Reduce(seed, func(ctx, acc, in) (acc, error))` – accumulate until upstream closes
+- `ForEach(func(ctx, in) error)` – side effects while forwarding the original item
+- `Batch(size, dur)` – emit slices when capacity or deadline hits first
+
+Each helper returns a standard `Handler`, so you can mix them with custom stages freely.
 
 ## Example: ETL Pipeline
 ```go
@@ -89,7 +73,10 @@ p = sazanami.AddStage(p, "parse",  parseLogs,
     sazanami.WithParallel(2),
 )
 
-p = sazanami.AddStage(p, "filter", filterLevels("warn","error"),
+p = sazanami.AddStage(p, "filter",
+    sazanami.Filter(func(_ context.Context, e entry) (bool, error) {
+        return e.Level == "warn" || e.Level == "error", nil
+    }),
     sazanami.WithTags("filter"),
     sazanami.WithBuffer(4),
 )
