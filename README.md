@@ -5,7 +5,12 @@
 ![CI](https://github.com/UUGTech/sazanami/actions/workflows/ci.yml/badge.svg)
 
 ## Overview
-Sazanami is a minimal pipeline library for Go. It lets you compose concurrent stages with type-safe handlers, buffering, and error policies-ideal for ETL flows, streaming jobs, or any workload that benefits from backpressure-aware pipelines. The design favors explicit, readable code: generics for safety, zero external dependencies, and a fluent builder that feels at home in Go.
+Sazanami (“ripples” in Japanese) is a minimal pipeline library for Go. It lets you compose concurrent stages with type-safe handlers, buffering, and error policies—ideal for ETL flows, streaming jobs, or any workload that benefits from backpressure-aware pipelines. The design favors explicit, readable code: generics for safety, zero external dependencies, and a fluent builder that feels at home in Go.
+
+> ⚠️ Status: Early-stage (v0.1.x)
+> The core pipeline features are stable, but APIs may change before v1.0.0.
+> Feedback and contributions are welcome!
+
 
 ## Installation
 ```bash
