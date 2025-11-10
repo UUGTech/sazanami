@@ -32,6 +32,7 @@ type stageConfig struct {
 	buffer   int
 	policy   Policy
 	timeout  time.Duration
+	stream   bool
 	runner   stageRunner
 }
 
@@ -61,6 +62,7 @@ func AddStage[I any, O any, N any](b *Builder[I, O], name string, h Handler[O, N
 			}
 			opt(cfg)
 		}
+		cfg.runner = makeStageRunner[O, N](cfg, h)
 	}
 	return nb
 }
@@ -74,6 +76,7 @@ func stageNamed[I any, O any, N any](b *Builder[I, O], name string, h Handler[O,
 		parallel: 1,
 		buffer:   64,
 		policy:   Drop(),
+		stream:   false,
 	}
 	if cfg.name == "" {
 		cfg.name = fmt.Sprintf("stage-%d", len(b.state.stages)+1)
@@ -220,6 +223,15 @@ func WithTimeout(d time.Duration) StageOption {
 	}
 	return func(c *stageConfig) {
 		c.timeout = d
+	}
+}
+
+// WithStreaming marks the handler as a long-lived stream processor.
+// Streaming stages ignore per-item retry semantics and run with parallelism set to 1.
+func WithStreaming() StageOption {
+	return func(c *stageConfig) {
+		c.stream = true
+		c.parallel = 1
 	}
 }
 
