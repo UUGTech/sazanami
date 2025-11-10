@@ -66,6 +66,8 @@ Sazanami ships with adapters for the most common stage shapes so you rarely touc
 
 Each helper returns a standard `Handler`, so you can mix them with custom stages freely.
 
+Need a long-lived stage that ranges over the channel? Mark it with `sazanami.WithStreaming()` when you add the stage—the handler will receive the real input/output streams (parallelism is forced to 1, and retries operate at the stage level).
+
 ## Example: ETL Pipeline
 ```go
 ctx := context.Background()
